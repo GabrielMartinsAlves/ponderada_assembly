@@ -1,230 +1,230 @@
-# Implementação de Bootloader x86 com Interface de Entrada Interativa
+# x86 Bootloader Implementation with Interactive Input Interface
 
-## Visão Geral Arquitetural
+## Architectural Overview
 
-Esta implementação constitui um bootloader de 16 bits desenvolvido em linguagem Assembly x86, projetado para execução em modo real (real mode) em arquiteturas compatíveis com o conjunto de instruções Intel 8086. O programa implementa funcionalidades básicas de entrada/saída através de interrupções BIOS, proporcionando uma interface rudimentar de interação com o usuário durante o processo de inicialização do sistema.
+This implementation constitutes a 16-bit bootloader developed in x86 Assembly language, designed for execution in real mode on Intel 8086 instruction set compatible architectures. The program implements basic input/output functionalities through BIOS interrupts, providing a rudimentary user interaction interface during the system boot process.
 
-## Especificações Técnicas
+## Technical Specifications
 
-### Arquitetura de Destino
-- **Plataforma**: x86 (16-bit real mode)
-- **Conjunto de Instruções**: Intel 8086/8088 compatível
-- **Modelo de Memória**: Segmentado (16-bit)
-- **Endereçamento**: Linear de 20 bits (1MB de espaço endereçável)
+### Target Architecture
+- **Platform**: x86 (16-bit real mode)
+- **Instruction Set**: Intel 8086/8088 compatible
+- **Memory Model**: Segmented (16-bit)
+- **Addressing**: 20-bit linear (1MB addressable space)
 
-### Requisitos de Sistema
-- Processador x86 compatível (8086 ou superior)
-- BIOS compatível com interrupções padrão (INT 10h, INT 16h)
-- Mídia de boot de 512 bytes (setor de boot padrão)
-- Suporte a modo real do processador
+### System Requirements
+- x86 compatible processor (8086 or higher)
+- BIOS compatible with standard interrupts (INT 10h, INT 16h)
+- 512-byte boot media (standard boot sector)
+- Processor real mode support
 
-## Análise Detalhada da Implementação
+## Detailed Implementation Analysis
 
-### Configuração Inicial e Organização de Memória
+### Initial Configuration and Memory Organization
 
 ```assembly
 org 0x7C00
 ```
 
-A diretiva `org 0x7C00` estabelece o ponto de origem do código na posição de memória 0x7C00 (31744 em decimal), que constitui o endereço padrão onde o BIOS carrega o primeiro setor (512 bytes) de dispositivos de boot. Esta convenção é fundamental para a compatibilidade com o processo de inicialização padrão x86.
+The `org 0x7C00` directive establishes the code origin point at memory position 0x7C00 (31744 in decimal), which constitutes the standard address where the BIOS loads the first sector (512 bytes) of boot devices. This convention is fundamental for compatibility with the standard x86 boot process.
 
-### Rotina de Output para Strings Zero-Terminadas
+### Zero-Terminated String Output Routine
 
-A função `output_string_zero_terminated` implementa um mecanismo eficiente de renderização de strings null-terminated utilizando a interrupção BIOS INT 10h:
+The `output_string_zero_terminated` function implements an efficient null-terminated string rendering mechanism using BIOS interrupt INT 10h:
 
 ```assembly
 output_string_zero_terminated:
-    lodsb                        ; carrega próximo byte da string em AL
-    or  al, al                   ; testa se AL é zero (terminador)
-    jz   .retorno_funcao
-    mov ah, 0Eh                  ; BIOS INT 10h função 0Eh: modo teletype
+    lodsb                        ; loads next byte from string into AL
+    or  al, al                   ; tests if AL is zero (terminator)
+    jz   .function_return
+    mov ah, 0Eh                  ; BIOS INT 10h function 0Eh: teletype mode
     int 10h
     jmp output_string_zero_terminated
 ```
 
-**Análise Técnica:**
-- Utiliza a instrução `lodsb` para carregamento automático e incremento do registrador SI
-- Implementa teste de terminação através da operação lógica `or al, al`
-- Emprega a função 0Eh da INT 10h para output em modo teletype
-- Mantém compatibilidade com convenções de strings C-style
+**Technical Analysis:**
+- Uses the `lodsb` instruction for automatic loading and SI register increment
+- Implements termination test through the logical operation `or al, al`
+- Employs function 0Eh of INT 10h for teletype mode output
+- Maintains compatibility with C-style string conventions
 
-### Sistema de Captura de Entrada de Teclado
+### Keyboard Input Capture System
 
-O mecanismo de captura de entrada implementa um buffer circular com limitação de caracteres:
+The input capture mechanism implements a circular buffer with character limitation:
 
 ```assembly
-captura_entrada_usuario:
-    mov ah, 0                    ; BIOS INT 16h função 0: aguarda e lê tecla pressionada
-    int 16h                      ; retorna código ASCII em AL
-    cmp al, 13                   ; verifica se é carriage return (Enter)
-    je  processa_saida_formatada
-    stosb                        ; armazena AL em [DI] e incrementa DI automaticamente
-    mov ah, 0Eh                  ; BIOS INT 10h função 0Eh: output de caractere em modo TTY
+capture_user_input:
+    mov ah, 0                    ; BIOS INT 16h function 0: wait and read pressed key
+    int 16h                      ; returns ASCII code in AL
+    cmp al, 13                   ; check if it's carriage return (Enter)
+    je  process_formatted_output
+    stosb                        ; stores AL in [DI] and increments DI automatically
+    mov ah, 0Eh                  ; BIOS INT 10h function 0Eh: character output in TTY mode
     int 10h
-    loop captura_entrada_usuario
+    loop capture_user_input
 ```
 
-**Características Implementadas:**
-- Blocking input através da função 0 da INT 16h
-- Echo automático de caracteres digitados
-- Detecção de carriage return (ASCII 13) como terminador de entrada
-- Proteção contra buffer overflow através do registrador CX
-- Utilização da instrução `stosb` para armazenamento otimizado
+**Implemented Features:**
+- Blocking input through INT 16h function 0
+- Automatic echo of typed characters
+- Carriage return detection (ASCII 13) as input terminator
+- Buffer overflow protection through CX register
+- Use of `stosb` instruction for optimized storage
 
-### Gerenciamento de Buffer e Validação de Dados
+### Buffer Management and Data Validation
 
-O sistema implementa um buffer estático de 21 bytes para armazenamento da entrada do usuário:
+The system implements a static 21-byte buffer for user input storage:
 
 ```assembly
-input_buffer times 21 db 0       ; área de memória reservada (20 chars + CR + null terminator)
+input_buffer times 21 db 0       ; reserved memory area (20 chars + CR + null terminator)
 ```
 
-Esta configuração permite:
-- 20 caracteres imprimíveis
-- 1 byte para carriage return
-- 1 byte para null terminator (compatibilidade com strings C-style)
+This configuration allows:
+- 20 printable characters
+- 1 byte for carriage return
+- 1 byte for null terminator (C-style string compatibility)
 
-### Processamento e Renderização de Saída
+### Output Processing and Rendering
 
-A rotina `renderiza_nome_usuario` implementa um parser para filtragem de caracteres de controle:
+The `render_username` routine implements a parser for control character filtering:
 
 ```assembly
-renderiza_nome_usuario:
-    lodsb                        ; carrega byte de [SI] em AL e incrementa SI
-    cmp al, 0                    ; verifica terminador nulo
-    je terminacao_programa
-    cmp al, 13                   ; filtra carriage return do buffer
-    je terminacao_programa
-    mov ah, 0Eh                  ; BIOS INT 10h função 0Eh para output de caractere
+render_username:
+    lodsb                        ; loads byte from [SI] into AL and increments SI
+    cmp al, 0                    ; checks for null terminator
+    je program_termination
+    cmp al, 13                   ; filters carriage return from buffer
+    je program_termination
+    mov ah, 0Eh                  ; BIOS INT 10h function 0Eh for character output
     int 10h
-    jmp renderiza_nome_usuario
+    jmp render_username
 ```
 
-**Funcionalidades de Filtragem:**
-- Detecção e tratamento de null terminator
-- Filtragem de carriage return para limpeza de output
-- Renderização caractere por caractere com validação
+**Filtering Features:**
+- Null terminator detection and handling
+- Carriage return filtering for clean output
+- Character-by-character rendering with validation
 
-### Estrutura de Boot Sector
+### Boot Sector Structure
 
-A implementação segue rigorosamente as especificações do Master Boot Record:
+The implementation strictly follows Master Boot Record specifications:
 
 ```assembly
-times 510-($-$$) db 0            ; preenchimento até offset 510 do setor de boot
-dw 0xAA55                        ; assinatura mágica do master boot record
+times 510-($-$$) db 0            ; padding until offset 510 of boot sector
+dw 0xAA55                        ; magic signature of master boot record
 ```
 
-**Conformidade com Especificações:**
-- Tamanho exato de 512 bytes
-- Assinatura mágica 0xAA55 nos últimos 2 bytes
-- Preenchimento com zeros para compatibilidade
+**Specification Compliance:**
+- Exact 512-byte size
+- Magic signature 0xAA55 in the last 2 bytes
+- Zero padding for compatibility
 
-## Fluxo de Execução Detalhado
+## Detailed Execution Flow
 
-### Fase 1: Inicialização
-1. BIOS carrega 512 bytes do dispositivo de boot para 0x7C00
-2. Transfere controle para o código carregado
-3. Registradores são inicializados com valores padrão do BIOS
+### Phase 1: Initialization
+1. BIOS loads 512 bytes from boot device to 0x7C00
+2. Transfers control to loaded code
+3. Registers are initialized with BIOS default values
 
-### Fase 2: Prompt de Entrada
-1. Carregamento do endereço da string prompt em SI
-2. Chamada da rotina de output zero-terminated
-3. Configuração do buffer de destino (DI) e contador (CX)
+### Phase 2: Input Prompt
+1. Loading prompt string address into SI
+2. Calling zero-terminated output routine
+3. Setting up destination buffer (DI) and counter (CX)
 
-### Fase 3: Captura de Dados
-1. Loop de captura com blocking input via INT 16h
-2. Validação de terminadores (Enter)
-3. Armazenamento no buffer com proteção contra overflow
-4. Echo simultâneo para feedback visual
+### Phase 3: Data Capture
+1. Capture loop with blocking input via INT 16h
+2. Terminator validation (Enter)
+3. Buffer storage with overflow protection
+4. Simultaneous echo for visual feedback
 
-### Fase 4: Processamento e Saída
-1. Renderização do cabeçalho de saudação
-2. Filtragem e validação dos dados capturados
-3. Output final com formatação adequada
+### Phase 4: Processing and Output
+1. Greeting header rendering
+2. Captured data filtering and validation
+3. Final output with proper formatting
 
-### Fase 5: Terminação
-1. Implementação de halt infinito (`jmp $`)
-2. Prevenção de execução de código inválido
-3. Manutenção do estado do sistema
+### Phase 5: Termination
+1. Implementation of infinite halt (`jmp $`)
+2. Prevention of invalid code execution
+3. System state maintenance
 
-## Considerações de Performance e Otimização
+## Performance and Optimization Considerations
 
-### Eficiência de Instruções
-- Utilização de instruções string (`lodsb`, `stosb`) para operações otimizadas
-- Aproveitamento de auto-incremento de registradores
-- Minimização de saltos condicionais desnecessários
+### Instruction Efficiency
+- Use of string instructions (`lodsb`, `stosb`) for optimized operations
+- Taking advantage of register auto-increment
+- Minimization of unnecessary conditional jumps
 
-### Gerenciamento de Recursos
-- Uso eficiente de registradores de propósito geral
-- Implementação de stack frame mínimo
-- Otimização de uso de memória (512 bytes totais)
+### Resource Management
+- Efficient use of general-purpose registers
+- Minimal stack frame implementation
+- Memory usage optimization (512 total bytes)
 
-### Compatibilidade e Portabilidade
-- Aderência rigorosa aos padrões BIOS
-- Compatibilidade retroativa com processadores 8086
-- Implementação defensiva contra variações de hardware
+### Compatibility and Portability
+- Strict adherence to BIOS standards
+- Backward compatibility with 8086 processors
+- Defensive implementation against hardware variations
 
-## Limitações e Restrições Conhecidas
+## Known Limitations and Restrictions
 
-### Limitações Funcionais
-- Buffer de entrada limitado a 20 caracteres
-- Ausência de edição de linha (backspace, delete)
-- Suporte apenas a caracteres ASCII básicos
-- Sem validação de entrada de dados
+### Functional Limitations
+- Input buffer limited to 20 characters
+- Absence of line editing (backspace, delete)
+- Support only for basic ASCII characters
+- No input data validation
 
-### Restrições Arquiteturais
-- Execução restrita ao modo real 16-bit
-- Dependência de serviços BIOS específicos
-- Limitação de tamanho total (512 bytes)
-- Ausência de tratamento de exceções
+### Architectural Restrictions
+- Execution restricted to 16-bit real mode
+- Dependency on specific BIOS services
+- Total size limitation (512 bytes)
+- Absence of exception handling
 
-### Considerações de Segurança
-- Vulnerabilidade a buffer overflow em implementações modificadas
-- Ausência de validação de entrada maliciosa
-- Execução em nível de privilégio máximo (ring 0)
+### Security Considerations
+- Vulnerability to buffer overflow in modified implementations
+- Absence of malicious input validation
+- Execution at maximum privilege level (ring 0)
 
-## Casos de Uso e Aplicações
+## Use Cases and Applications
 
-### Ambientes de Desenvolvimento
-- Plataforma educacional para aprendizado de Assembly x86
-- Base para desenvolvimento de bootloaders mais complexos
-- Ferramenta de debugging de baixo nível
+### Development Environments
+- Educational platform for x86 Assembly learning
+- Base for developing more complex bootloaders
+- Low-level debugging tool
 
-### Aplicações Práticas
-- Sistema de diagnóstico básico
-- Interface de configuração pré-sistema operacional
-- Demonstração de conceitos de programação em modo real
+### Practical Applications
+- Basic diagnostic system
+- Pre-operating system configuration interface
+- Demonstration of real mode programming concepts
 
-## Compilação e Deployment
+## Compilation and Deployment
 
-### Ferramentas Requeridas
-- Assembler compatível (NASM, MASM, ou similar)
-- Ferramenta de criação de imagem de disco
-- Emulador x86 para testes (QEMU, VirtualBox, etc.)
+### Required Tools
+- Compatible assembler (NASM, MASM, or similar)
+- Disk image creation tool
+- x86 emulator for testing (QEMU, VirtualBox, etc.)
 
-### Processo de Build
+### Build Process
 ```bash
 nasm -f bin bootloader.asm -o bootloader.bin
 dd if=bootloader.bin of=disk.img bs=512 count=1
 ```
 
-### Verificação de Integridade
-- Confirmação de tamanho exato (512 bytes)
-- Validação da assinatura magic number (0xAA55)
-- Teste em ambiente controlado antes de deployment
+### Integrity Verification
+- Confirm exact size (512 bytes)
+- Validate magic number signature (0xAA55)
+- Test in controlled environment before deployment
 
-## Extensibilidade e Melhorias Futuras
+## Extensibility and Future Improvements
 
-### Funcionalidades Propostas
-- Implementação de edição de linha com backspace
-- Suporte a caracteres especiais e acentuação
-- Sistema de validação de entrada robusta
-- Interface de menu interativa
+### Proposed Features
+- Implementation of line editing with backspace
+- Support for special characters and accents
+- Robust input validation system
+- Interactive menu interface
 
-### Otimizações Arquiteturais
-- Migração para modo protegido 32-bit
-- Implementação de tratamento de interrupções customizado
-- Sistema de gerenciamento de memória expandida
-- Suporte a dispositivos de armazenamento modernos
+### Architectural Optimizations
+- Migration to 32-bit protected mode
+- Implementation of custom interrupt handling
+- Extended memory management system
+- Support for modern storage devices
 
-Este bootloader representa uma implementação dos conceitos básicos de programação em Assembly x86, fornecendo uma base para a compreensão dos mecanismos de baixo nível envolvidos no processo de inicialização de sistemas computacionais.
+This bootloader represents an implementation of basic x86 Assembly programming concepts, providing a foundation for understanding the low-level mechanisms involved in the computer system boot process.
